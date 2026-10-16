@@ -1,0 +1,10 @@
+{
+  "name": "cortei",
+  "version": "1.0.0",
+  "description": "Cortei: plataforma de campanhas de cortes pagas por visualização",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test-server.js" },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "private": true
+}

@@ -1,0 +1,14 @@
+# Opção sem Docker: /etc/systemd/system/cortei.service
+[Unit]
+Description=Cortei
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/cortei
+EnvironmentFile=/opt/cortei/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+User=cortei
+
+[Install]
+WantedBy=multi-user.target
