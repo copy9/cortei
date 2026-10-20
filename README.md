@@ -31,6 +31,7 @@ O mesmo `index.html` funciona nos dois modos: ele detecta sozinho se há um serv
 cortei/
 ├── index.html                  # a plataforma (publicada pelo GitHub Pages)
 ├── .nojekyll
+├── sync-site.sh                # copia o index.html da raiz para servidor/public/
 ├── README.md
 └── servidor/                   # versão com servidor para usuários reais
     ├── README-SERVIDOR.md
@@ -38,5 +39,19 @@ cortei/
     ├── Dockerfile, docker-compose.yml, Caddyfile, .env.example
     ├── reset-password.js, test-server.js
     ├── deploy/                 # alternativa sem Docker (nginx + systemd)
-    └── public/index.html
+    └── public/index.html       # cópia do index.html da raiz
+```
+
+## Mexendo no site
+
+O `index.html` existe em dois lugares: na **raiz** (o que o GitHub Pages publica) e em **`servidor/public/`** (o que o servidor Node entrega). Edite sempre o da raiz e rode:
+
+```
+./sync-site.sh
+```
+
+Para conferir o servidor e, de quebra, se as duas cópias estão iguais:
+
+```
+cd servidor && npm test
 ```

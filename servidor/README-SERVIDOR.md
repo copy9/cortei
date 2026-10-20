@@ -8,6 +8,7 @@ Este pacote é a plataforma **com servidor**: contas reais com senha, dados comp
 - `Dockerfile`, `docker-compose.yml`, `Caddyfile`: sobe tudo com HTTPS automático.
 - `deploy/`: alternativa sem Docker (nginx + systemd).
 - `reset-password.js`: redefine a senha de um usuário.
+- `test-server.js`: 55 verificações automáticas de permissão, sessão, fraude e persistência. Rode com `npm test` antes de publicar qualquer mudança no servidor.
 
 ## O que você precisa
 1. Um **domínio** (por exemplo, no Registro.br, cerca de R$ 40 por ano).
@@ -33,11 +34,11 @@ curl -fsSL https://get.docker.com | sh
 ```
 
 ### 3. Enviar o projeto para o servidor
-Descompacte o zip no seu computador e envie a pasta (no seu computador, não no servidor):
+O que vai para o servidor é **esta pasta `servidor/`**, não o repositório inteiro: é nela que ficam o `docker-compose.yml` e o `Dockerfile`. No seu computador (não no servidor):
 ```
-scp -r cortei root@IP:/opt/cortei
+scp -r cortei/servidor root@IP:/opt/cortei
 ```
-(Se preferir, suba a pasta em um repositório **privado** do GitHub e use `git clone` no servidor. Nunca envie o arquivo `.env` ao GitHub.)
+(Se preferir, suba o projeto em um repositório **privado** do GitHub, use `git clone` no servidor e rode os comandos dentro de `cortei/servidor`. Nunca envie o arquivo `.env` ao GitHub.)
 
 ### 4. Configurar
 No servidor:
@@ -76,7 +77,7 @@ A plataforma **não movimenta dinheiro sozinha**. Você faz os PIX pelo seu banc
 
 ## Backup e atualização
 - **Dados:** tudo fica na pasta `data/`. O servidor guarda uma cópia por dia em `data/backups/` (últimos 30 dias). **Copie essa pasta para fora do servidor** com frequência (por exemplo, `scp -r root@IP:/opt/cortei/data ./backup`).
-- **Atualizar o site:** troque o arquivo `public/index.html` e rode `docker compose up -d --build`.
+- **Atualizar o site:** o site é o `index.html`. Ele existe em dois lugares no repositório: na raiz (é o que o GitHub Pages publica) e em `servidor/public/` (é o que este servidor entrega). Edite o da raiz, rode `./sync-site.sh` para copiar para cá e só então envie ao servidor e rode `docker compose up -d --build`. O `npm test` avisa se as duas cópias estiverem diferentes.
 - **Ver erros:** `docker compose logs -f app`
 
 ## Alternativa sem Docker
