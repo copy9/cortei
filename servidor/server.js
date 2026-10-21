@@ -96,9 +96,9 @@ const by=new Map(db.camps.map(c=>[c.s,c]));
 for(const c of list){if(!isObj(c)||!/^[a-z0-9-]{1,60}$/.test(String(c.s)))continue;const o=by.get(c.s);
 if(o){if(o.ow!==v.email)continue;const st=o.st;C_ALWAYS.forEach(k=>{if(c[k]!==undefined)o[k]=c[k]});if(st==='pedido')C_PENDING.forEach(k=>{if(c[k]!==undefined)o[k]=c[k]});
 if(typeof o.n==='string')o.n=cl(o.n).slice(0,120);
-const nv=r2(num(c.val));if(nv>num(o.val)){o.val=nv;o.pool=r2(nv*(1-num(db.set.fee)/100));if(o.t==='cpm')o.bud=o.pool}}
+const nv=r2(num(c.val));if(nv>num(o.val)){o.val=nv;o.pool=r2(nv*(1-num(db.set.fee)/100));o.bud=o.pool}}
 else{if(db.camps.filter(x=>x.ow===v.email).length>=100)continue;const val=r2(num(c.val));if(!(val>=1))continue;const pool=r2(val*(1-num(db.set.fee)/100));
-const n=Object.assign({s:c.s,b:cl(v.nome),t:'camp',pz:'A definir',p1:'',cpm:0,i:0,hue:num(c.hue)||270,st:'pedido',ow:v.email,val,pool,bud:pool,vg:0,dmin:0,dmax:0,vmin:0,pr:[]},pick(c,C_ALWAYS.concat(C_PENDING)));n.n=cl(n.n).slice(0,120)||'Campanha';db.camps.push(n);by.set(n.s,n)}}}
+const n=Object.assign({s:c.s,b:cl(v.nome),pz:'A definir',cpm:0,i:0,hue:num(c.hue)||270,st:'pedido',ow:v.email,val,pool,bud:pool,vg:0,dmin:0,dmax:0,vmin:0},pick(c,C_ALWAYS.concat(C_PENDING)));n.n=cl(n.n).slice(0,120)||'Campanha';db.camps.push(n);by.set(n.s,n)}}}
 function applyTickets(v,list){if(!Array.isArray(list))return;const adm=!!v.adm,by=new Map(db.tk.map(t=>[t.id,t]));
 for(const t of list){if(!isObj(t)||!t.id||BAD.has(t.id))continue;const o=by.get(t.id);
 if(!o){if(!adm&&t.u!==v.email)continue;if(db.tk.length>20000)continue;const n=safeAssign({},t);n.msgs=(Array.isArray(t.msgs)?t.msgs:[]).filter(isObj).map(m=>({f:adm?m.f:'user',t:num(m.t)||Date.now(),txt:cl(m.txt).slice(0,4000)}));if(!adm)n.u=v.email;db.tk.push(n);by.set(n.id,n);continue}
