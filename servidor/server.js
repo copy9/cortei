@@ -1,6 +1,8 @@
 'use strict';
 /* Cortei: servidor (sem dependências externas; precisa só do Node.js 18+) */
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+const mail=require('./mail.js');
+const BRL=n=>'R$ '+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const PORT=+process.env.PORT||3000;
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const PUBLIC_DIR=process.env.PUBLIC_DIR||path.join(__dirname,'public');
@@ -11,7 +13,7 @@ const COOKIE_SECURE=process.env.COOKIE_SECURE==='1';
 const MAX_BODY=8*1024*1024,SESSION_DAYS=30,CLIENT_ADM='admin@cortei.com.br';
 fs.mkdirSync(DATA_DIR,{recursive:true});
 const DB_FILE=path.join(DATA_DIR,'db.json');
-const DEFAULT_SET={auto:true,autoSub:false,car:15,carV:7,min:10,fee:15,aviso:'',contato:CONTACT_EMAIL};
+const DEFAULT_SET={auto:true,autoSub:false,car:15,carV:7,min:10,fee:15,vmin:1000,aviso:'',contato:CONTACT_EMAIL};
 let db=null;
 try{db=JSON.parse(fs.readFileSync(DB_FILE,'utf8'))}catch(e){}
 if(!db)db={ver:1,secret:crypto.randomBytes(32).toString('hex'),users:{},camps:[],set:{...DEFAULT_SET},nw:[],tk:[],nt:[],log:[]};
@@ -41,10 +43,15 @@ function ensureAdmin(){if(!ADMIN_EMAIL||!ADMIN_PASSWORD)return;const u=db.users[
 ensureAdmin();
 /* ---------- sessão ---------- */
 function makeToken(u){const p=Buffer.from(JSON.stringify({e:u.email,x:Date.now()+SESSION_DAYS*864e5,v:(u.auth&&u.auth.v)||1})).toString('base64url');return p+'.'+hmac(p)}
-function readToken(tok){if(!tok||tok.indexOf('.')<0)return null;const[p,sg]=tok.split('.');const e=hmac(p);if(sg.length!==e.length||!crypto.timingSafeEqual(Buffer.from(sg),Buffer.from(e)))return null;let o;try{o=JSON.parse(Buffer.from(p,'base64url').toString())}catch(x){return null}if(!o||o.x<Date.now())return null;const u=db.users[o.e];if(!u||u.ban)return null;if(((u.auth&&u.auth.v)||1)!==o.v)return null;return u}
+function readToken(tok){if(!tok||tok.indexOf('.')<0)return null;const[p,sg]=tok.split('.');const e=hmac(p);if(sg.length!==e.length||!crypto.timingSafeEqual(Buffer.from(sg),Buffer.from(e)))return null;let o;try{o=JSON.parse(Buffer.from(p,'base64url').toString())}catch(x){return null}if(!o||o.k||o.x<Date.now())return null;const u=db.users[o.e];if(!u||u.ban)return null;if(((u.auth&&u.auth.v)||1)!==o.v)return null;return u}
 function parseCookies(h){const o={};String(h||'').split(';').forEach(c=>{const i=c.indexOf('=');if(i>0)o[c.slice(0,i).trim()]=decodeURIComponent(c.slice(i+1).trim())});return o}
 function setCookie(res,req,tok,clear){const secure=COOKIE_SECURE||req.headers['x-forwarded-proto']==='https';res.setHeader('Set-Cookie','cz_sid='+(clear?'':tok)+'; Path=/; HttpOnly; SameSite=Lax; Max-Age='+(clear?0:SESSION_DAYS*86400)+(secure?'; Secure':''))}
 const viewerOf=req=>readToken(parseCookies(req.headers.cookie).cz_sid);
+/* ---------- recuperação de senha ---------- */
+function makeReset(u){const p=Buffer.from(JSON.stringify({e:u.email,x:Date.now()+36e5,v:(u.auth&&u.auth.v)||1,k:'r'})).toString('base64url');return p+'.'+hmac(p)}
+function readReset(tok){if(!tok||String(tok).indexOf('.')<0)return null;const[p,sg]=String(tok).split('.');const e=hmac(p);if(sg.length!==e.length)return null;try{if(!crypto.timingSafeEqual(Buffer.from(sg),Buffer.from(e)))return null}catch(x){return null}
+let o;try{o=JSON.parse(Buffer.from(p,'base64url').toString())}catch(x){return null}
+if(!o||o.k!=='r'||o.x<Date.now())return null;const u=db.users[o.e];if(!u||u.ban)return null;if(((u.auth&&u.auth.v)||1)!==o.v)return null;return u}
 /* ---------- limite de tentativas ---------- */
 const RL=new Map();
 function limited(key,max,win){const now=Date.now();let a=(RL.get(key)||[]).filter(t=>now-t<win);a.push(now);RL.set(key,a);if(RL.size>5000)for(const[k,v]of RL)if(!v.length||now-v[v.length-1]>win)RL.delete(k);return a.length>max}
@@ -63,7 +70,7 @@ if(u.role==='cliente'){p.foto=u.foto}else{p.enr=u.enr||[];p.enT=u.enT||{};p.ap=u
 users[al]=p}
 const camps=db.camps.filter(c=>adm||(v&&c.ow===v.email)||!['pedido','recusada','revisao'].includes(c.st)).map(c=>{if(adm||(v&&c.ow===v.email))return c;const x=Object.assign({},c);if(x.ow)x.ow=aliasOf(x.ow);delete x.val;return x});
 let total=0;for(const u of Object.values(db.users))for(const s of(u.subs||[]))total+=postOk(s);
-return{ver:db.ver,session:v?{email:v.email,role:v.role||'cortador',adm:!!v.adm}:null,users,camps,set:db.set,nw:db.nw,
+return{ver:db.ver,mail:mail.ativo(),session:v?{email:v.email,role:v.role||'cortador',adm:!!v.adm}:null,users,camps,set:db.set,nw:db.nw,
 tk:v?(adm?db.tk:db.tk.filter(t=>t.u===v.email)):[],nt:v?db.nt.filter(n=>n.u===v.email):[],log:adm?db.log:[],total}}
 /* ---------- escrita (com regras de permissão) ---------- */
 const PROT_USER=new Set(['email','role','adm','vf','ban','adj','ap','cr','auth','ph','dp','cw','subs','wd','enr','enT','pg']);
@@ -84,9 +91,13 @@ let t=num(s.t);if(Math.abs(Date.now()-t)>10*60e3)t=Date.now();while(have.has(t))
 if(Array.isArray(c.wd)){st.wd=st.wd||[];const have=new Set(st.wd.map(w=>w.t));for(const w of c.wd){if(!isObj(w)||have.has(w.t))continue;const v=r2(num(w.v));if(v<=0)continue;if(st.wd.filter(x=>!x.st).length>=5)break;let t=num(w.t)||Date.now();while(have.has(t))t++;st.wd.push({v,t});have.add(t)}}
 }
 function mergeUserAdmin(st,c){
+const wdAntes=new Map((st.wd||[]).map(w=>[w.t,w.st||'']));
 safeAssign(st,c,new Set(['email','auth','ph','subs','wd']));
 const merge=(a,b)=>{a=a||[];const m=new Map(a.map(x=>[x.t,x]));(b||[]).forEach(x=>{if(isObj(x)&&x.t!==undefined){const o=m.get(x.t);if(o)safeAssign(o,x);else{a.push(x);m.set(x.t,x)}}});return a};
-st.subs=merge(st.subs,c.subs);st.wd=merge(st.wd,c.wd)}
+st.subs=merge(st.subs,c.subs);st.wd=merge(st.wd,c.wd);
+(st.wd||[]).forEach(w=>{if(wdAntes.get(w.t)!=='')return;/* só avisa na troca de pendente para pago ou recusado */
+if(w.st==='pago')mail.saquePago(st.email,st.nome||'',BRL(w.v),st.pix||'sua chave PIX');
+else if(w.st==='recusado')mail.saqueRecusado(st.email,st.nome||'',BRL(w.v))})}
 function ownerCampaigns(c){return c}
 const C_ALWAYS=['h','ds','soc','rq','cont','foto'],C_PENDING=['n','pl','esc','reg','f'];
 function applyCamps(v,list){
@@ -112,7 +123,7 @@ if(!adm&&n.u!==v.email)continue;const x={id:String(n.id).slice(0,60),u:String(n.
 if(db.nt.length>5000)db.nt.length=5000}
 function applyWrites(v,w){
 const adm=!!v.adm;
-if(adm){if(isObj(w.cz_set)){const s=w.cz_set;db.set=Object.assign({},DEFAULT_SET,{auto:!!s.auto,autoSub:!!s.autoSub,car:Math.min(60,Math.max(0,Math.round(num(s.car)))),carV:Math.min(60,Math.max(0,Math.round(num(s.carV)))),min:Math.max(0,num(s.min)),fee:Math.min(100,Math.max(0,num(s.fee))),aviso:cl(s.aviso).slice(0,300),contato:cl(s.contato).slice(0,120)||CONTACT_EMAIL})}
+if(adm){if(isObj(w.cz_set)){const s=w.cz_set;db.set=Object.assign({},DEFAULT_SET,{auto:!!s.auto,autoSub:!!s.autoSub,car:Math.min(60,Math.max(0,Math.round(num(s.car)))),carV:Math.min(60,Math.max(0,Math.round(num(s.carV)))),min:Math.max(0,num(s.min)),vmin:Math.max(0,Math.round(num(s.vmin))),fee:Math.min(100,Math.max(0,num(s.fee))),aviso:cl(s.aviso).slice(0,300),contato:cl(s.contato).slice(0,120)||CONTACT_EMAIL})}
 if(Array.isArray(w.cz_nw))db.nw=w.cz_nw.filter(isObj).slice(0,100);
 if(Array.isArray(w.cz_log))db.log=w.cz_log.filter(isObj).slice(0,100)}
 // campanhas e carteira: valida juntos
@@ -147,13 +158,25 @@ if(db.users[email]||email===CLIENT_ADM||email===ADMIN_EMAIL)return send(res,400,
 if(nome.length<2)return send(res,400,{err:'Informe seu nome.'});
 if(zd.length<10||zd.length>13)return send(res,400,{err:'Informe um WhatsApp válido, com DDD.'});
 if(senha.length<6||senha.length>200)return send(res,400,{err:'Use ao menos 6 caracteres.'});
-const u=newUser({email,nome,zap,role,pix:role==='cortador'?cl(b.pix).slice(0,200):'',auth:hashPw(senha)});db.users[email]=u;touch();setCookie(res,req,makeToken(u));return send(res,200,view(u))}
+const u=newUser({email,nome,zap,role,pix:role==='cortador'?cl(b.pix).slice(0,200):'',auth:hashPw(senha)});db.users[email]=u;touch();mail.boasVindas(email,nome,role);setCookie(res,req,makeToken(u));return send(res,200,view(u))}
 if(p==='/api/login'){const email=String(b.email||'').trim().toLowerCase();if(limited('ip:'+ip,30,600e3)||limited('em:'+email,8,900e3))return send(res,429,{err:'Muitas tentativas. Aguarde alguns minutos.'});
 const u=db.users[email];if(!u||!checkPw(String(b.senha||''),u.auth))return send(res,401,{err:'E-mail ou senha incorretos.'});
 if(u.ban)return send(res,403,{err:'Conta suspensa. Fale com o suporte.'});
 const role=b.role==='cliente'?'cliente':'cortador';if(!u.adm&&(u.role||'cortador')!==role)return send(res,400,{err:'Essa conta é de '+((u.role||'cortador')==='cliente'?'cliente':'cortador')+'. Escolha a opção certa acima.'});
 setCookie(res,req,makeToken(u));return send(res,200,view(u))}
 if(p==='/api/logout'){setCookie(res,req,'',true);return send(res,200,view(null))}
+if(p==='/api/forgot'){const email=String(b.email||'').trim().toLowerCase();
+if(limited('fg:'+ip,10,3600e3)||limited('fge:'+email,3,900e3))return send(res,429,{err:'Muitas tentativas. Aguarde alguns minutos.'});
+const u=db.users[email],pronto=mail.ativo();
+if(u&&!u.ban&&pronto){const link=(mail.site()||'')+'/#/nova-senha/'+makeReset(u);mail.senha(u.email,u.nome||'',link)}
+if(!pronto)console.log('pedido de nova senha de',email,'mas o envio de e-mail não está configurado');
+return send(res,200,{ok:true,mail:pronto})}
+if(p==='/api/reset'){if(limited('rs:'+ip,20,3600e3))return send(res,429,{err:'Muitas tentativas. Aguarde alguns minutos.'});
+const u=readReset(b.token),nova=String(b.senha||'');
+if(!u)return send(res,400,{err:'Este link expirou ou já foi usado. Peça um novo.'});
+if(nova.length<6||nova.length>200)return send(res,400,{err:'Use ao menos 6 caracteres.'});
+const nv=((u.auth&&u.auth.v)||1)+1;u.auth=hashPw(nova);u.auth.v=nv;touch();
+setCookie(res,req,makeToken(u));return send(res,200,{ok:true,role:u.role||'cortador',adm:!!u.adm})}
 const v=viewerOf(req);if(!v)return send(res,401,{err:'Sessão expirada. Entre novamente.'});
 if(p==='/api/state'){if(!isObj(b.writes))return send(res,400,{err:'Dados inválidos.'});try{applyWrites(v,b.writes)}catch(e){console.error('erro ao aplicar',e)}return send(res,200,view(db.users[v.email]||null))}
 if(p==='/api/me/delete'){if(v.adm)return send(res,400,{err:'A conta de administrador não pode ser excluída aqui.'});delete db.users[v.email];touch();setCookie(res,req,'',true);return send(res,200,view(null))}
